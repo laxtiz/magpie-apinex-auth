@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "title": "APInex",
+    "description": "用浏览器 OAuth 或 API key 登录 APInex，并每日自动签到领取免费额度。"
+  },
+  "auth": {
+    "oauthLabel": "用浏览器登录 APInex",
+    "apiLabel": "APInex API key"
+  },
+  "checkin": {
+    "claimed": "签到成功，获得 %s XP",
+    "done": "今日已签到"
+  }
+}

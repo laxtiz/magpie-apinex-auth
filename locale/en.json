@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "title": "APInex",
+    "description": "Sign in to APInex with browser OAuth or an API key, and check in daily for free tokens."
+  },
+  "auth": {
+    "oauthLabel": "Sign in with APInex (browser)",
+    "apiLabel": "APInex API key"
+  },
+  "checkin": {
+    "claimed": "Checked in, %s XP earned",
+    "done": "Already checked in today"
+  }
+}
