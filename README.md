@@ -58,6 +58,12 @@ magpie plugin add ./magpie-apinex-auth
 
 装好后 agent 里用 `apinex/<model>` 选模型，例如 `apinex/free/glm-5.3-flash`。
 
+## 图标
+
+https://github.com/yidasanqian/magpie-apinex-auth/blob/main/icon.svg 是源文件；`package.json` 的 `magpie.icon` 保存同一份 SVG 的 `data:image/svg+xml;base64` URI。
+
+magpie 的 `magpie.icon` 只认 `https://` 地址或 `data:` URI，不认包内路径，所以不能写 `./icon.svg`。这里用 data URI 是为了让插件在离线、未发布 npm 的情况下也能显示自己的图标。
+
 ## 免责声明
 
 非官方插件，与 APInex 无隶属关系。登录凭据只保存在 magpie 自己的配置目录里（`apinex/session.json` 与 `plugin-auth.json`），不会发往第三方。使用需自行遵守 APInex 的服务条款。
