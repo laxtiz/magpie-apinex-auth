@@ -42,10 +42,22 @@ cookie 失效时插件会删掉 `apinex/session.json`，返回 `failed` 并提�
 
 ## 安装
 
+从 GitHub 安装：
+
 ```bash
-magpie plugin add ./opencode-apinex-auth
+magpie plugin add github:yidasanqian/opencode-apinex-auth
 magpie plugin login apinex
 magpie provider test apinex
 ```
 
-用文件夹路径就地加载，改完代码在 magpie 里把插件关掉再打开即可生效。
+也可以就地加载本文件夹（改完代码在 magpie 里关掉再打开即生效）：
+
+```bash
+magpie plugin add ./opencode-apinex-auth
+```
+
+装好后 agent 里用 `apinex/<model>` 选模型，例如 `apinex/free/glm-5.3-flash`。
+
+## 免责声明
+
+非官方插件，与 APInex 无隶属关系。登录凭据只保存在 magpie 自己的配置目录里（`apinex/session.json` 与 `plugin-auth.json`），不会发往第三方。使用需自行遵守 APInex 的服务条款。
