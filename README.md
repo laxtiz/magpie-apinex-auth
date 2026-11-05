@@ -1,6 +1,6 @@
-# opencode-apinex-auth
+# magpie-apinex-auth
 
-APInex 的 magpie / OpenCode 供应商插件。用浏览器设备码登录或 API key 登录，然后在 magpie 里自动完成每日签到，领取免费模型的每日额度。
+APInex 的 magpie 供应商插件。用浏览器设备码登录或 API key 登录，然后在 magpie 里自动完成每日签到，领取免费模型的每日额度。
 
 ## 登录方式
 
@@ -45,7 +45,7 @@ cookie 失效时插件会删掉 `apinex/session.json`，返回 `failed` 并提�
 从 GitHub 安装：
 
 ```bash
-magpie plugin add github:yidasanqian/opencode-apinex-auth
+magpie plugin add github:yidasanqian/magpie-apinex-auth
 magpie plugin login apinex
 magpie provider test apinex
 ```
@@ -53,7 +53,7 @@ magpie provider test apinex
 也可以就地加载本文件夹（改完代码在 magpie 里关掉再打开即生效）：
 
 ```bash
-magpie plugin add ./opencode-apinex-auth
+magpie plugin add ./magpie-apinex-auth
 ```
 
 装好后 agent 里用 `apinex/<model>` 选模型，例如 `apinex/free/glm-5.3-flash`。

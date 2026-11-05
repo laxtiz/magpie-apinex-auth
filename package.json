@@ -1,7 +1,7 @@
 {
-  "name": "opencode-apinex-auth",
+  "name": "magpie-apinex-auth",
   "version": "0.1.0",
-  "description": "OpenCode/Magpie provider plugin: APInex (one API for every model, device-code login + daily check-in)",
+  "description": "Magpie provider plugin: APInex (one API for every model, device-code login + daily check-in)",
   "type": "module",
   "main": "./index.mjs",
   "exports": {
@@ -18,19 +18,19 @@
     "LICENSE"
   ],
   "keywords": [
-    "opencode",
-    "opencode-plugin",
+    "magpie",
+    "magpie-plugin",
     "apinex",
-    "magpie"
+    "provider"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yidasanqian/opencode-apinex-auth.git"
+    "url": "git+https://github.com/yidasanqian/magpie-apinex-auth.git"
   },
-  "homepage": "https://github.com/yidasanqian/opencode-apinex-auth#readme",
+  "homepage": "https://github.com/yidasanqian/magpie-apinex-auth#readme",
   "bugs": {
-    "url": "https://github.com/yidasanqian/opencode-apinex-auth/issues"
+    "url": "https://github.com/yidasanqian/magpie-apinex-auth/issues"
   },
   "magpie": {
     "maxConcurrency": 4,
