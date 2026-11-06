@@ -1,13 +1,14 @@
-// APInex 每日签到：签到接口要求 Turnstile token，只能在真实浏览器里拿到。
-// 因此这里用 CDP 驱动本地 Edge/Chrome：
-//   1) 首次运行：打开窗口，用户在窗口里 Google 登录一次，随后自动签到并保存 session cookie；
-//   2) 之后每次运行：用全新临时 profile + 注入已保存的 cookie，不依赖上一次的 profile 锁。
+// APInex 每日签到。签到接口要求 Cloudflare Turnstile token，只能在真实浏览器里拿到，
+// 所以这里用 CDP 驱动本地浏览器：
+//   1) 优先复用用户自己开着的默认浏览器（Edge/Chrome），它已有 APInex 登录态：
+//      Edge 需在 edge://inspect/#remote-debugging 打开开关并重启一次。
+//   2) 连不上时用独立的持久 profile：首次开窗口登录一次，之后 profile 里的 cookie 直接复用。
+//      profile 是持久的，不能删；只清运行时锁文件。
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs"
 import { spawn } from "node:child_process"
 import { resolve } from "node:path"
 import { homedir } from "node:os"
-import { randomBytes } from "node:crypto"
 
 const SITE = "https://apinex.bond"
 const COOKIE_NAME = "apinex_user_session"
@@ -16,45 +17,93 @@ const TURNSTILE_JS = "https://challenges.cloudflare.com/turnstile/v0/api.js?rend
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-function browserCandidates() {
+/** Windows 上读系统默认浏览器的 ProgId，用来优先用用户自己的浏览器。 */
+async function windowsDefaultBrowser() {
+  if (process.platform !== "win32") return undefined
+  const { spawnSync } = await import("node:child_process")
+  const r = spawnSync("reg", [
+    "query",
+    "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice",
+    "/v",
+    "ProgId",
+  ], { encoding: "utf8", windowsHide: true })
+  const m = /ProgId\s+REG_SZ\s+(\S+)/.exec(r.stdout ?? "")
+  if (!m) return undefined
+  const id = m[1].toLowerCase()
+  if (id.includes("edge")) return "edge"
+  if (id.includes("chrome")) return "chrome"
+  if (id.includes("brave")) return "brave"
+  if (id.includes("firefox")) return "firefox"
+  return undefined
+}
+
+async function browserCandidates() {
   const home = homedir()
+  const paths = {}
   if (process.platform === "win32") {
     const local = process.env.LOCALAPPDATA || resolve(home, "AppData", "Local")
-    const pf = process.env.ProgramFiles || "C:\\Program Files"
-    const pf86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"
-    return [
-      resolve(pf, "Google/Chrome/Application/chrome.exe"),
-      resolve(pf86, "Google/Chrome/Application/chrome.exe"),
-      resolve(local, "Google/Chrome/Application/chrome.exe"),
+    const pf = process.env.ProgramFiles || "C:\Program Files"
+    const pf86 = process.env["ProgramFiles(x86)"] || "C:\Program Files (x86)"
+    paths.edge = [
       resolve(pf86, "Microsoft/Edge/Application/msedge.exe"),
       resolve(pf, "Microsoft/Edge/Application/msedge.exe"),
       resolve(local, "Microsoft/Edge/Application/msedge.exe"),
     ]
-  }
-  if (process.platform === "darwin") {
-    return [
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    paths.chrome = [
+      resolve(pf, "Google/Chrome/Application/chrome.exe"),
+      resolve(pf86, "Google/Chrome/Application/chrome.exe"),
+      resolve(local, "Google/Chrome/Application/chrome.exe"),
     ]
+    paths.brave = [
+      resolve(pf, "BraveSoftware/Brave-Browser/Application/brave.exe"),
+      resolve(local, "BraveSoftware/Brave-Browser/Application/brave.exe"),
+    ]
+  } else if (process.platform === "darwin") {
+    paths.edge = ["/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
+    paths.chrome = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+    paths.brave = ["/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"]
+    paths.firefox = ["/Applications/Firefox.app/Contents/MacOS/firefox"]
+  } else {
+    paths.edge = ["/usr/bin/microsoft-edge", "/usr/bin/microsoft-edge-stable"]
+    paths.chrome = ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]
+    paths.brave = ["/usr/bin/brave-browser"]
+    paths.firefox = ["/usr/bin/firefox"]
   }
-  return [
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/usr/bin/microsoft-edge",
-  ]
+
+  // 默认浏览器排最前；其余作为后备，但绝不悄悄换成别的浏览器。
+  const order = []
+  const preferred = await windowsDefaultBrowser()
+  if (preferred) order.push(preferred)
+  for (const id of ["edge", "chrome", "brave", "firefox"]) {
+    if (!order.includes(id)) order.push(id)
+  }
+  return order.flatMap((id) => paths[id] ?? [])
 }
 
-export function findBrowser(explicit) {
-  if (explicit) return explicit
-  return browserCandidates().find((p) => existsSync(p))
+export async function findBrowser(explicit) {
+  if (explicit) return existsSync(explicit) ? explicit : undefined
+  return (await browserCandidates()).find((p) => existsSync(p))
 }
 
 class Cdp {
   #ws
   #id = 0
-  #pending = new Map()
+  counter = 0
+  pending = new Map()
+  #sessionId
+  #shared
+
+  /** 传 sessionId 时复用浏览器级 WS，按扁平会话把命令路由到某个页面。 */
+  constructor(ws, sessionId, shared) {
+    this.#ws = ws
+    this.#sessionId = sessionId
+    // 父子会话共用同一条 WS，消息 id 也必须共用，否则两边 id 撞车会丢回包。
+    this.#shared = shared
+  }
+
+  session(sessionId) {
+    return new Cdp(this.#ws, sessionId, this.#shared ?? this)
+  }
 
   static async attach(wsUrl, timeoutMs = 20000) {
     const c = new Cdp()
@@ -67,21 +116,24 @@ class Cdp {
     c.#ws.onmessage = (e) => {
       let m
       try { m = JSON.parse(typeof e.data === "string" ? e.data : "") } catch { return }
-      const p = m.id && c.#pending.get(m.id)
+      const p = m.id && c.pending.get(m.id)
       if (!p) return
-      c.#pending.delete(m.id)
+      c.pending.delete(m.id)
       m.error ? p.rej(new Error(m.error.message || JSON.stringify(m.error))) : p.res(m.result)
     }
     return c
   }
 
   send(method, params = {}, timeoutMs = 60000) {
-    const id = ++this.#id
+    const owner = this.#shared ?? this
+    const id = ++owner.counter
     return new Promise((res, rej) => {
-      this.#pending.set(id, { res, rej })
-      this.#ws.send(JSON.stringify({ id, method, params }))
+      owner.pending.set(id, { res, rej })
+      const msg = { id, method, params }
+      if (this.#sessionId) msg.sessionId = this.#sessionId
+      this.#ws.send(JSON.stringify(msg))
       setTimeout(() => {
-        if (this.#pending.delete(id)) rej(new Error(`CDP ${method} 超时`))
+        if (owner.pending.delete(id)) rej(new Error(`CDP ${method} 超时`))
       }, timeoutMs)
     })
   }
@@ -95,7 +147,24 @@ class Cdp {
   }
 
   close() {
+    if (this.#sessionId) {
+      // 子会话只 detach，不关浏览器级 WS。
+      this.#ws.send(JSON.stringify({
+        id: ++this.#id,
+        method: "Target.detachFromTarget",
+        params: { sessionId: this.#sessionId },
+      }))
+      return
+    }
     try { this.#ws.close() } catch {}
+  }
+}
+
+
+/** 持久 profile 复用时，上一次的锁文件会让浏览器拒绝启动；启动前和结束后都清一遍。 */
+async function clearProfileLocks(profileDir) {
+  for (const name of ["DevToolsActivePort", "lockfile", "SingletonLock", "SingletonSocket", "SingletonCookie"]) {
+    try { rmSync(resolve(profileDir, name), { force: true }) } catch {}
   }
 }
 
@@ -114,12 +183,12 @@ async function stopBrowser(child, profileDir) {
   ], { stdio: "ignore", windowsHide: true })
 }
 
-async function launch(exe, profileDir, offscreen) {
+async function launch(exe, profileDir, offscreen, startUrl = `${SITE}/overview`) {
   // 浏览器按自己进程的 cwd 解释相对路径，必须给绝对路径。
   const dir = resolve(profileDir)
   mkdirSync(dir, { recursive: true })
+  await clearProfileLocks(dir)
   const portFile = resolve(dir, "DevToolsActivePort")
-  try { rmSync(portFile, { force: true }) } catch {}
 
   const args = [
     `--user-data-dir=${dir}`,
@@ -137,7 +206,8 @@ async function launch(exe, profileDir, offscreen) {
     "--window-size=1100,860",
     // Cloudflare Turnstile 在真无头模式下不给 token，所以非登录场景改成「有窗口但移出可视区」。
     ...(offscreen ? ["--window-position=-2400,-2400", "--mute-audio"] : ["--start-maximized"]),
-    "about:blank",
+    // 直接把目标页作为启动页：用户一眼能看到登录界面，不必等 CDP 建好 target 再导航。
+    startUrl,
   ]
   const child = spawn(exe, args, { stdio: "ignore", windowsHide: offscreen, detached: false })
   child.on("error", () => {})
@@ -156,20 +226,66 @@ async function launch(exe, profileDir, offscreen) {
   throw new Error(`浏览器没有在 20 秒内就绪：${exe}`)
 }
 
-async function openPage(browser, port, url) {
-  const { targetId } = await browser.send("Target.createTarget", { url })
-  // 页面自己的 debugger URL 只能从 HTTP /json/list 取，浏览器级 Target.getTargets 里没有。
-  for (let i = 0; i < 40; i++) {
-    try {
-      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
-      const info = list.find(
-        (t) => (t.id === targetId || t.targetId === targetId) && t.type === "page" && t.webSocketDebuggerUrl,
-      )
-      if (info) return Cdp.attach(info.webSocketDebuggerUrl, 8000)
-    } catch {}
-    await sleep(250)
+
+/** 用户自己浏览器（Edge/Chrome）可能已开启远程调试；优先复用它已有的登录态。 */
+function userBrowserPortFiles() {
+  const local = process.env.LOCALAPPDATA || resolve(homedir(), "AppData", "Local")
+  if (process.platform === "win32") {
+    return ["Microsoft/Edge", "Google/Chrome", "BraveSoftware/Brave-Browser"]
+      .flatMap((b) => [
+        resolve(local, b, "User Data/DevToolsActivePort"),
+        resolve(local, b, "User Data/Default/DevToolsActivePort"),
+      ])
   }
-  throw new Error("拿不到页面调试地址")
+  if (process.platform === "darwin") {
+    return ["Microsoft Edge", "Google Chrome", "BraveSoftware/Brave-Browser"]
+      .flatMap((b) => [
+        resolve(homedir(), "Library/Application Support", b, "DevToolsActivePort"),
+      ])
+  }
+  return ["microsoft-edge", "google-chrome", "chromium", "BraveSoftware/Brave-Browser"]
+    .flatMap((b) => [resolve(homedir(), ".config", b, "DevToolsActivePort")])
+}
+
+/** 连上用户已开启调试的浏览器；没有就返回 undefined，不抛错。 */
+async function attachUserBrowser() {
+  for (const file of userBrowserPortFiles()) {
+    if (!existsSync(file)) continue
+    let lines
+    try {
+      lines = readFileSync(file, "utf8").trim().split(/\r?\n/)
+
+    } catch { continue }
+    if (lines.length < 2 || !lines[0]) continue
+    const wsUrl = `ws://127.0.0.1:${lines[0]}${lines[1]}`
+    try {
+      const browser = await Cdp.attach(wsUrl, 6000)
+      return { browser, port: Number(lines[0]), portFile: file }
+    } catch {}
+  }
+  return undefined
+}
+
+/**
+ * 在浏览器里开一个页面并拿到它的会话。
+ * 只走 WS 扁平会话：Edge 的 HTTP /json/list 需要 Host: localhost 才回应，
+ * 而 WS 用 127.0.0.1 直连即可，少依赖一个环节。
+ */
+async function openPage(browser, url) {
+  const { targetId } = await browser.send("Target.createTarget", { url: url || "about:blank" })
+  const { sessionId } = await browser.send("Target.attachToTarget", { targetId, flatten: true })
+  const page = browser.session(sessionId)
+  page.__targetId = targetId
+  return page
+}
+
+/** 用完关掉自己开的标签，不留痕迹。 */
+async function closePage(browser, page) {
+  const targetId = page?.__targetId
+  try { page?.close() } catch {}
+  if (targetId) {
+    try { await browser.send("Target.closeTarget", { targetId }) } catch {}
+  }
 }
 
 async function sessionCookieOf(page) {
@@ -309,9 +425,9 @@ export async function browserCheckin(options = {}) {
     ? (...a) => console.error("[apinex-checkin]", ...a)
     : () => {}
 
-  const exe = findBrowser(browserPath)
+  const exe = await findBrowser(browserPath)
   if (!exe) {
-    return { outcome: "failed", message: "未找到 Chrome/Edge，可用 plugin options 的 browserPath 指定" }
+    return { outcome: "failed", message: "未找到可用的浏览器，可用 plugin options 的 browserPath 指定" }
   }
 
   const root = resolve(stateDir)
@@ -322,13 +438,11 @@ export async function browserCheckin(options = {}) {
   }
   const cookie = sessionCookie || saved?.cookie
 
-  // 没有 cookie 时只能用持久 profile 打开窗口登录；有 cookie 时用一次性 profile，避开 profile 锁。
-  const profileDir = cookie
-    ? resolve(root, `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`)
-    : resolve(root, "login-profile")
-  const ephemeral = Boolean(cookie)
-  // 首次没有 cookie 时，即使调用方要求静默，也必须开窗口让用户登录一次。
-  const showWindow = headed || !cookie
+  // 持久 profile：首次开窗口手动登录一次，之后 profile 里的 cookie 直接复用，不再要求登录。
+  const profileDir = resolve(root, "browser-profile")
+  // 没登录过的账号必须先看到窗口；已登录过的可以移到屏幕外静默跑。
+  const needLogin = !cookie
+  const showWindow = headed || needLogin
 
   const persist = (value) => {
     if (!value) return
@@ -347,16 +461,32 @@ export async function browserCheckin(options = {}) {
   let child
   let browser
   let page
+  let usingUserBrowser = false
   try {
-    debug("启动浏览器", exe, showWindow ? "window" : "offscreen", profileDir)
-    const l = await launch(exe, profileDir, !showWindow)
-    child = l.child
-    browser = l.browser
-    page = await openPage(browser, l.port, "about:blank")
+    // 先试用户自己开着的浏览器：它已经有 APInex 登录态，不需要再登录一次。
+    if (!options.freshProfile) {
+      const attached = await attachUserBrowser()
+      if (attached) {
+        debug("复用用户浏览器，端口", attached.port)
+        browser = attached.browser
+        browser.__port = attached.port
+        usingUserBrowser = true
+      }
+    }
+
+    if (!browser) {
+      debug("启动独立浏览器", exe, showWindow ? "window" : "offscreen", profileDir)
+      const l = await launch(exe, profileDir, !showWindow, needLogin ? `${SITE}/login` : `${SITE}/overview`)
+      child = l.child
+      browser = l.browser
+    }
+    // 复用用户浏览器时开一个临时标签，用完关掉；独立浏览器则直接用它自己的窗口。
+    page = await openPage(browser, `${SITE}/overview`)
     await page.send("Page.enable")
     await page.send("Network.enable")
 
-    if (cookie) {
+    // 只有我们自己起的独立 profile 才需要注入 cookie；复用用户浏览器时用他自己的登录态。
+    if (cookie && !usingUserBrowser) {
       await page.send("Network.setCookie", {
         name: COOKIE_NAME,
         value: cookie,
@@ -420,12 +550,10 @@ export async function browserCheckin(options = {}) {
   } catch (e) {
     return { outcome: "failed", message: e instanceof Error ? e.message : String(e) }
   } finally {
-    try { page?.close() } catch {}
-    // 只关闭页面的 WS 不会停浏览器；这里整棵树一起收掉，避免下次启动被残留进程锁住。
-    await stopBrowser(child, profileDir)
-    if (ephemeral) {
-      await sleep(600)
-      try { rmSync(profileDir, { recursive: true, force: true }) } catch {}
-    }
+    if (page && browser) await closePage(browser, page)
+    // 只关闭页面的 WS 不会停浏览器；用户自己的浏览器绝不能杀，只收掉我们自己起的。
+    if (!usingUserBrowser) await stopBrowser(child, profileDir)
+    // profile 要留着下次复用登录态，只清掉会让下次启动失败的锁文件。
+    await clearProfileLocks(profileDir)
   }
 }
