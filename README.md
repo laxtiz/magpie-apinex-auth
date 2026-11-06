@@ -58,6 +58,18 @@ magpie plugin add ./magpie-apinex-auth
 
 装好后 agent 里用 `apinex/<model>` 选模型，例如 `apinex/free/glm-5.3-flash`。
 
+## 在 magpie 里找到这个插件
+
+三条路径，按可靠程度排列：
+
+| 路径 | 前提 | 是否已验证 |
+| --- | --- | --- |
+| `magpie plugin add github:yidasanqian/magpie-apinex-auth` | 无 | 已验证，会写明 `magpie-apinex-auth 0.1.0` |
+| 插件 → 发现 → 非官方插件 · GitHub | 仓库打了 `magpie-plugin` topic，magpie 每十分钟拉取一次 | 仓库已带 topic 并出现在 topic 搜索结果中 |
+| 插件 → 发现 → npm 上的插件 | 发布到 npm，且 keywords 含 `opencode` | 未发布 npm，未验证 |
+
+「npm 上的插件」这一栏的搜索协议是向 npm 查询 `<关键词> opencode`，并要求名字或 keywords 里含 `opencode`；本插件按 magpie 命名，keywords 为 `magpie`、`magpie-plugin`、`apinex`、`provider`，因此即使发布到 npm 也不会出现在这个搜索里。要进入那份列表，需要把 `opencode` 加回 keywords。
+
 ## 图标
 
 https://github.com/yidasanqian/magpie-apinex-auth/blob/main/icon.svg 是源文件；`package.json` 的 `magpie.icon` 保存同一份 SVG 的 `data:image/svg+xml;base64` URI。
