@@ -15,6 +15,11 @@ APInex 的 magpie 供应商插件。用浏览器设备码登录或 API key 登�
 
 `provider.models` 从 `https://api.apinex.bond/api/public/models` 读实时目录，含上下文窗口、视觉、工具调用、每百万 token 价格和免费标记；接口不可用时回落到插件内置的 20 个模型（带 `magpie.fellBack` 标记）。请求走 OpenAI 兼容的 `/v1/chat/completions`。
 
+- **决策模型**：Jev Group 的 `free/jev-1.13`、`drex-v2.0`、`jev-1.13`（厂商打 `decision` 标签）走 TypeSafe 决策协议，标 `decides: true` 后由 magpie 作为路由分类器使用、对 agent 隐藏。magpie 把决策请求发到 `{baseURL}/systemone`，APInex 的同名协议在 `/v1/decisions`，loader 里做了这一条路径重写。
+- **免费倍率**：免费模型的 `weight`（每日额度按 (输入+输出) × weight 计费）映射到 magpie 的 `rate`，模型选择器直接可见。
+- **命名**：付费模型名字带 `[paid]` 后缀，免费模型靠 magpie 的「免费」徽标区分——厂商给免费/付费版起同样的名字，不标注的话选择器会出现灰色的 id 消歧文字。
+- **插件选项**：`magpie plugin options apinex '{"only_free_models": true}'`（或应用里的开关）只保留 `free/*` 模型。
+
 ## 每日签到
 
 APInex 的签到接口要求 Cloudflare Turnstile token，只能在真实浏览器里拿到。插件用 CDP 驱动本地 Chrome/Edge：
@@ -38,7 +43,10 @@ cookie 失效时插件会删掉 `apinex/session.json`，返回 `failed` 并提�
 
 ## 用量
 
-`auth.usage` 读 `/api/cli/account`，显示套餐、余额和免费 token 窗口（`3,990 / 20,000,000 tokens`，按北京时间 00:00 UTC 重置）。今日未签到时会提示「今日签到后才能用免费模型」，此时 `/v1/chat/completions` 对免费模型返回 `billing_error`。
+两种登录都能看用量：
+
+- **浏览器 OAuth**：读 `/api/cli/account`，显示套餐、余额和免费 token 窗口（`3,990 / 20,000,000 tokens`，按北京时间 00:00 UTC 重置）。今日未签到时会提示「今日签到后才能用免费模型」，此时 `/v1/chat/completions` 对免费模型返回 `billing_error`。
+- **API key**：读公开的 `GET /v1/balance`（USD 钱包，顶层余额）和 `GET /v1/subscription`（免费额度窗口，`plan_label`/到期时间来自这里；免费额度窗口用 `model: "free/"` 限定，因为付费模型走钱包、不占额度）。
 
 ## 安装
 
@@ -68,7 +76,7 @@ magpie plugin add ./magpie-apinex-auth
 | 插件 → 发现 → 非官方插件 · GitHub | 仓库打了 `magpie-plugin` topic，magpie 每十分钟拉取一次 | 仓库已带 topic 并出现在 topic 搜索结果中 |
 | 插件 → 发现 → npm 上的插件 | 发布到 npm，且 keywords 含 `opencode` | 未发布 npm，未验证 |
 
-「npm 上的插件」这一栏的搜索协议是向 npm 查询 `<关键词> opencode`，并要求名字或 keywords 里含 `opencode`；本插件按 magpie 命名，keywords 为 `magpie`、`magpie-plugin`、`apinex`、`provider`，因此即使发布到 npm 也不会出现在这个搜索里。要进入那份列表，需要把 `opencode` 加回 keywords。
+「npm 上的插件」这一栏的搜索协议是向 npm 查询 `<关键词> opencode`，并要求名字或 keywords 里含 `opencode`；本插件已在 keywords 里带上 `opencode` 与 `opencode-plugin`，发布 npm 后即可被搜到。
 
 ## 图标
 

@@ -19,26 +19,26 @@ const cliHeaders = {
 
 /** 拿不到 /api/public/models 时使用的内置目录，按 APInex 公开模型表整理。 */
 const FALLBACK_MODELS = {
-  "free/glm-5.3-flash": { name: "GLM-5.3 Flash (free)", cost: { input: 0, output: 0 } },
-  "free/deepseek-v4.1-flash": { name: "Deepseek V4.1 Flash (free)", cost: { input: 0, output: 0 } },
-  "free/kimi-k3": { name: "Kimi K3 (free)", cost: { input: 0, output: 0 } },
-  "free/qwen-3.8-max": { name: "Qwen 3.8 MAX (free)", cost: { input: 0, output: 0 } },
-  "free/gemini-3.8-flash": { name: "Gemini 3.8 Flash (free)", cost: { input: 0, output: 0 } },
-  "free/claude-sonnet-4.6": { name: "Claude 4.6 Sonnet (free)", cost: { input: 0, output: 0 } },
-  "free/claude-opus-4.6": { name: "Claude 4.6 Opus (free)", cost: { input: 0, output: 0 } },
-  "free/minimax-m3": { name: "MiniMax M3 (free)", cost: { input: 0, output: 0 } },
-  "free/mimo-v2.6-pro": { name: "Mimo V2.6 Pro (free)", cost: { input: 0, output: 0 } },
-  "free/jev-1.13": { name: "Jev 1.13 (free)", cost: { input: 0, output: 0 } },
-  "claude-sonnet-5.5": { name: "Claude Sonnet 5.5", cost: { input: 0.4, output: 0.4 } },
-  "claude-opus-5.5": { name: "Claude Opus 5.5", cost: { input: 0.5, output: 0.5 } },
-  "gpt-6.1-sol": { name: "GPT 6.1 Sol", cost: { input: 0.3, output: 0.3 } },
-  "gpt-6.1-terra": { name: "GPT 6.1 Terra", cost: { input: 0.17, output: 0.17 } },
-  "gemini-3.1-pro": { name: "Gemini 3.1 Pro", cost: { input: 0.15, output: 0.15 } },
-  "gemini-4-argon": { name: "Gemini 4 Argon", cost: { input: 0.6, output: 0.6 } },
-  "grok-4.7": { name: "Grok 4.7", cost: { input: 0.3, output: 0.3 } },
-  "deepseek-v4-pro": { name: "Deepseek V4 Pro", cost: { input: 0.07, output: 0.07 } },
-  "kimi-k3.1-pro": { name: "Kimi K3.1 Pro", cost: { input: 0.3, output: 0.4 } },
-  "glm-5.3": { name: "GLM 5.3", cost: { input: 0.15, output: 0.15 } },
+  "free/glm-5.3-flash": { name: "GLM-5.3 Flash", cost: { input: 0, output: 0 }, free: true, rate: 3 },
+  "free/deepseek-v4.1-flash": { name: "Deepseek V4.1 Flash", cost: { input: 0, output: 0 }, free: true, rate: 3 },
+  "free/kimi-k3": { name: "Kimi K3", cost: { input: 0, output: 0 }, free: true, rate: 3 },
+  "free/qwen-3.8-max": { name: "Qwen 3.8 MAX", cost: { input: 0, output: 0 }, free: true, rate: 3 },
+  "free/gemini-3.8-flash": { name: "Gemini 3.8 Flash", cost: { input: 0, output: 0 }, free: true, rate: 3 },
+  "free/claude-sonnet-4.6": { name: "Claude 4.6 Sonnet", cost: { input: 0, output: 0 }, free: true, rate: 3 },
+  "free/claude-opus-4.6": { name: "Claude 4.6 Opus", cost: { input: 0, output: 0 }, free: true, rate: 3 },
+  "free/minimax-m3": { name: "MiniMax M3", cost: { input: 0, output: 0 }, free: true, rate: 2 },
+  "free/mimo-v2.6-pro": { name: "Mimo V2.6 Pro", cost: { input: 0, output: 0 }, free: true, rate: 2 },
+  "free/jev-1.13": { name: "Jev 1.13", cost: { input: 0, output: 0 }, free: true, rate: 2, decides: true },
+  "claude-sonnet-5.5": { name: "Claude Sonnet 5.5 [paid]", cost: { input: 0.4, output: 0.4 } },
+  "claude-opus-5.5": { name: "Claude Opus 5.5 [paid]", cost: { input: 0.5, output: 0.5 } },
+  "gpt-6.1-sol": { name: "GPT 6.1 Sol [paid]", cost: { input: 0.3, output: 0.3 } },
+  "gpt-6.1-terra": { name: "GPT 6.1 Terra [paid]", cost: { input: 0.17, output: 0.17 } },
+  "gemini-3.1-pro": { name: "Gemini 3.1 Pro [paid]", cost: { input: 0.15, output: 0.15 } },
+  "gemini-4-argon": { name: "Gemini 4 Argon [paid]", cost: { input: 0.6, output: 0.6 } },
+  "grok-4.7": { name: "Grok 4.7 [paid]", cost: { input: 0.3, output: 0.3 } },
+  "deepseek-v4-pro": { name: "Deepseek V4 Pro [paid]", cost: { input: 0.07, output: 0.07 } },
+  "kimi-k3.1-pro": { name: "Kimi K3.1 Pro [paid]", cost: { input: 0.3, output: 0.4 } },
+  "glm-5.3": { name: "GLM 5.3 [paid]", cost: { input: 0.15, output: 0.15 } },
 }
 
 function parseContextWindow(raw) {
@@ -53,14 +53,21 @@ function parseContextWindow(raw) {
 
 function modelFromApi(m) {
   const paid = !m.id.startsWith("free/")
+  // 厂商给 Jev Group 打 `decision` 标签：它们走 TypeSafe 决策协议，不产出文本，
+  // 标 `decides` 后 magpie 把它们当路由分类器并对 agent 隐藏。
+  const decision = (m.tags ?? []).includes("decision")
   return {
-    name: m.name || m.id,
-    limit: { context: parseContextWindow(m.contextWindow), output: 32000 },
+    // 免费模型靠 `free` 徽标区分；付费模型加 [paid] 后缀，避免与同名免费版混淆。
+    name: paid ? `${m.name || m.id} [paid]` : m.name || m.id,
+    limit: { context: parseContextWindow(m.contextWindow), output: decision ? 1 : 32000 },
     reasoning: /thinking|reasoning|pro|opus|sol|max/i.test(m.id) && paid,
     tool_call: m.supportsTools !== false,
     modalities: { input: m.supportsVision === false ? ["text"] : ["text", "image"] },
     cost: { input: m.dollarsPer1M ?? 0, output: m.outputDollarsPer1M ?? 0 },
     free: !paid,
+    // 厂商的 weight 是免费额度的计费倍率（(输入+输出) × weight），magpie 的 rate 正好展示它。
+    ...(m.weight ? { rate: m.weight } : {}),
+    ...(decision ? { decides: true } : {}),
     api: { id: m.id },
   }
 }
@@ -103,7 +110,7 @@ function signInError(message) {
   return Object.assign(new Error(message), { signIn: "expired" })
 }
 
-export const APInexPlugin = async ({ client, directory } = {}) => {
+export const APInexPlugin = async ({ client, directory, magpie } = {}) => {
   // directory 是 magpie 的配置目录；签到 cookie 与浏览器 profile 都存在它的 apinex 子目录里。
   const stateDir = directory ? `${directory}/apinex` : "./apinex-state"
   try {
@@ -117,6 +124,8 @@ export const APInexPlugin = async ({ client, directory } = {}) => {
         name: "APInex",
         npm: "@ai-sdk/openai-compatible",
         api: BASE,
+        // 让 per-model 的 decides 生效：没有它，所有模型都会被当聊天模型。
+        decide: true,
         models: FALLBACK_MODELS,
       }
     },
@@ -133,9 +142,17 @@ export const APInexPlugin = async ({ client, directory } = {}) => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`)
           const data = await r.json()
           if (!Array.isArray(data?.models) || data.models.length === 0) throw new Error("empty")
+          const onlyFree = magpie?.option?.(PROVIDER, "only_free_models") === true
           for (const m of data.models) {
             if (m.health && m.health !== "live") continue
+            if (onlyFree && !m.id.startsWith("free/")) continue
             list[m.id] = modelFromApi(m)
+          }
+          // list 是在内置兜底目录上合并出来的，付费兜底项也要一并清掉。
+          if (onlyFree) {
+            for (const id of Object.keys(list)) {
+              if (!id.startsWith("free/")) delete list[id]
+            }
           }
           return list
         } catch {
@@ -149,6 +166,16 @@ export const APInexPlugin = async ({ client, directory } = {}) => {
       provider: PROVIDER,
       refreshLead: 5 * 60 * 1000,
       maxConcurrency: 4,
+
+      options: [
+        {
+          key: "only_free_models",
+          label: "Only show free models",
+          description:
+            "关闭（默认）：列出全部模型。开启：只保留 free/* 模型——它们走每日免费额度，$0 钱包不会被扣。",
+          default: false,
+        },
+      ],
 
       methods: [
         {
@@ -246,7 +273,11 @@ export const APInexPlugin = async ({ client, directory } = {}) => {
             const headers = new Headers(init?.headers)
             headers.set("authorization", `Bearer ${token}`)
             headers.set("x-apinex-client", `magpie/${VERSION}`)
-            const res = await fetch(input, { ...init, headers })
+            // magpie 把决策请求发到 {baseURL}/systemone；APInex 用同样的
+            // TypeSafe 格式（state + questions）服务在 /v1/decisions 上。
+            const url = typeof input === "string" ? input : input.url
+            const target = url.endsWith("/systemone") ? url.replace(/\/systemone$/, "/decisions") : url
+            const res = await fetch(target, { ...init, headers })
             if (res.status !== 401) return res
             // 厂商用 401 表示登录失效；加这个头 magpie 才会把账号标成需要重新登录。
             const marked = new Headers(res.headers)
@@ -258,6 +289,7 @@ export const APInexPlugin = async ({ client, directory } = {}) => {
 
       async usage(getAuth) {
         const auth = await getAuth()
+        if (auth?.type === "api") return apiKeyUsage(auth)
         if (auth?.type !== "oauth") return { user: auth?.email }
         const r = await fetch(`${API}/api/cli/account`, {
           headers: { ...cliHeaders, authorization: `Bearer ${auth.access}`, accept: "application/json" },
@@ -322,5 +354,63 @@ async function postJson(url, body) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * API key 登录没有 /api/cli/account 的 OAuth 态，改读公开的余额与订阅接口：
+ * /v1/balance 是 USD 钱包（balance_usd 已扣除在途预扣），/v1/subscription 是
+ * 免费额度（resets_at_utc 是每日重置，expires_at_utc 是欢迎金/订阅到期）。
+ * 免费额度只作用于 free/* 模型，付费模型走钱包，所以窗口用 model: "free/" 限定。
+ */
+async function apiKeyUsage(auth) {
+  const headers = { authorization: `Bearer ${auth.key}`, accept: "application/json" }
+  const get = async (path) => {
+    try {
+      const r = await withTimeout(fetch(`${BASE}${path}`, { headers }), 15000)
+      if (r.status === 401 || r.status === 403) throw signInError("API key 被拒绝，请重新登录")
+      if (!r.ok) return { error: `APInex 返回 ${r.status}` }
+      return { body: await r.json() }
+    } catch (e) {
+      if (e.signIn) throw e
+      return { error: `无法连接 APInex: ${e}` }
+    }
+  }
+  const [bal, sub] = await Promise.all([get("/balance"), get("/subscription")])
+  const windows = []
+  if (sub.body) {
+    const s = sub.body
+    const daily = Boolean(s.resets_at_utc)
+    const unlimited = Boolean(s.unlimited)
+    const fmt = (n) => (n ?? 0).toLocaleString("en-US")
+    const window = {
+      name: s.plan_label || (daily ? "Daily free allowance" : "Free tokens"),
+      unit: "tokens",
+      model: "free/",
+      resetsAt: s.resets_at_utc || s.expires_at_utc || undefined,
+      span: daily
+        ? 86400
+        : s.expires_at_utc
+          ? Math.max(60, Math.round((Date.parse(s.expires_at_utc) - Date.now()) / 1000))
+          : undefined,
+      display: unlimited
+        ? "unlimited"
+        : `${fmt(s.tokens_used)} / ${fmt(s.token_limit)} tokens${s.allowed === false ? " · exhausted" : ""}`,
+    }
+    // amount + limit，不传百分比：magpie 会按它们推算用量。
+    if (!unlimited && s.token_limit > 0 && s.tokens_used != null) {
+      window.amount = s.tokens_used
+      window.limit = s.token_limit
+    }
+    windows.push(window)
+  }
+  const errors = [bal.error, sub.error].filter(Boolean)
+  if (errors.length && !windows.length) return { error: errors.join("; "), windows: [] }
+  return {
+    plan: sub.body?.plan_label || sub.body?.plan || "Free",
+    until: sub.body?.expires_at_utc || undefined,
+    renew: "off", // APInex 的套餐和充值都不自动续费
+    balance: typeof bal.body?.balance_usd === "number" ? `$${bal.body.balance_usd.toFixed(2)}` : undefined,
+    windows,
+  }
+}
 
 export default APInexPlugin
